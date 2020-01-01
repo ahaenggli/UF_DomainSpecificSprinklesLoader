@@ -1,0 +1,21 @@
+{
+    "name": "ahaenggli/sprinkle-core",
+    "type": "userfrosting-sprinkle",
+    "description": "load domain specific sprinkles",
+    "homepage": "https://github.com/ahaenggli/UF_DomainSpecificSprinklesLoader",
+    "license" : "MIT",
+    "authors" : [
+        {
+            "name": "Adriano Hänggli",
+            "homepage": "https://github.com/ahaenggli/"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "UserFrosting\\Sprinkle\\DomainSpecificSprinklesLoader\\": "src/"
+        }
+    },
+    "extra": {
+        "installer-name": "DomainSpecificSprinklesLoader"
+    }
+}
