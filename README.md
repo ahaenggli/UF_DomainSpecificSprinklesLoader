@@ -23,13 +23,13 @@ Feel free to open an issue or submit a pull request.
 |         4.3.x        |         1.0.0         |
 
 # Installation
-Edit UserFrosting `app/sprinkles.json` file and add the following to the `require` list : `"ahaenggli/UF_DomainSpecificSprinklesLoader": "^1.0.0"`. 
+Edit UserFrosting `app/sprinkles.json` file and add the following to the `require` list : `"ahaenggli/uf_domainspecificsprinklesloader": "^1.0.0"`. 
 Also add `DomainSpecificSprinklesLoader` to the `base` list. For example:
 
 ```
 {
     "require": {
-        "ahaenggli/UF_DomainSpecificSprinklesLoader": "^1.0.0"
+        "ahaenggli/uf_domainspecificsprinklesloader": "^1.0.0"
     },
     "base": [
         "core",
@@ -68,7 +68,7 @@ Your `app/sprinkles.json` looks like:
 ```
 {
     "require": {
-        "ahaenggli/UF_DomainSpecificSprinklesLoader": "^1.0.0"
+        "ahaenggli/uf_domainspecificsprinklesloader": "^1.0.0"
     },
     "base": [
         "core",
