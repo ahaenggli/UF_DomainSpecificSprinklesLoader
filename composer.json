@@ -1,5 +1,5 @@
 {
-    "name": "ahaenggli/sprinkle-core",
+    "name": "ahaenggli/UF_DomainSpecificSprinklesLoader",
     "type": "userfrosting-sprinkle",
     "description": "load domain specific sprinkles",
     "homepage": "https://github.com/ahaenggli/UF_DomainSpecificSprinklesLoader",
