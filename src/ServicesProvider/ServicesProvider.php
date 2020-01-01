@@ -63,6 +63,46 @@ class ServicesProvider
                     }
                 }
 
+                /* override existing config */
+                unset($container['config']);        
+                $container['config'] = function ($c) {
+
+                    /* clear locator-cache */
+                    $uri = 'config://';
+                    $key = $uri.'@'.(int) true.(int) true;
+                    $class = new \ReflectionClass("UserFrosting\UniformResourceLocator\ResourceLocator");
+                    $property = $class->getProperty("cache");
+                    $property->setAccessible(true);    
+                    $property->setValue($c->locator, null);
+                    
+                    // Get configuration mode from environment
+                    $mode = getenv('UF_MODE') ?: '';
+
+                    // Construct and load config repository
+                    $builder = new ConfigPathBuilder($c->locator, 'config://');
+                    $loader = new ArrayFileLoader($builder->buildPaths($mode));
+                    $config = new Repository($loader->load());
+
+                    // Construct base url from components, if not explicitly specified
+                    if (!isset($config['site.uri.public'])) {
+                        $uri = $c->request->getUri();
+
+                        // Slim\Http\Uri likes to add trailing slashes when the path is empty, so this fixes that.
+                        $config['site.uri.public'] = trim($uri->getBaseUrl(), '/');
+                    }
+
+                    // Hacky fix to prevent sessions from being hit too much: ignore CSRF middleware for requests for raw assets ;-)
+                    // See https://github.com/laravel/framework/issues/8172#issuecomment-99112012 for more information on why it's bad to hit Laravel sessions multiple times in rapid succession.
+                    $csrfBlacklist = $config['csrf.blacklist'];
+                    $csrfBlacklist['^/' . $config['assets.raw.path']] = [
+                        'GET',
+                    ];
+
+                    $config->set('csrf.blacklist', $csrfBlacklist);
+
+                    return $config;
+                };
+                
                 foreach($additionalSprinkles as $addSprinkle){
                     // existing instance is overridden
                     // if(!$container->sprinkleManager->isAvailable($addSprinkle)){
@@ -74,44 +114,6 @@ class ServicesProvider
             }
         }
 
-            /* override existing config */
-            unset($container['config']);        
-            $container['config'] = function ($c) {
-
-                /* clear locator-cache */
-                $uri = 'config://';
-                $key = $uri.'@'.(int) true.(int) true;
-                $class = new \ReflectionClass("UserFrosting\UniformResourceLocator\ResourceLocator");
-                $property = $class->getProperty("cache");
-                $property->setAccessible(true);    
-                $property->setValue($c->locator, null);
-                
-                // Get configuration mode from environment
-                $mode = getenv('UF_MODE') ?: '';
-
-                // Construct and load config repository
-                $builder = new ConfigPathBuilder($c->locator, 'config://');
-                $loader = new ArrayFileLoader($builder->buildPaths($mode));
-                $config = new Repository($loader->load());
-
-                // Construct base url from components, if not explicitly specified
-                if (!isset($config['site.uri.public'])) {
-                    $uri = $c->request->getUri();
-
-                    // Slim\Http\Uri likes to add trailing slashes when the path is empty, so this fixes that.
-                    $config['site.uri.public'] = trim($uri->getBaseUrl(), '/');
-                }
-
-                // Hacky fix to prevent sessions from being hit too much: ignore CSRF middleware for requests for raw assets ;-)
-                // See https://github.com/laravel/framework/issues/8172#issuecomment-99112012 for more information on why it's bad to hit Laravel sessions multiple times in rapid succession.
-                $csrfBlacklist = $config['csrf.blacklist'];
-                $csrfBlacklist['^/' . $config['assets.raw.path']] = [
-                    'GET',
-                ];
-
-                $config->set('csrf.blacklist', $csrfBlacklist);
-
-                return $config;
-            };
+            
     }
 }
