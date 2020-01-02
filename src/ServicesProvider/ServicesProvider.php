@@ -8,7 +8,11 @@ use UserFrosting\Support\Repository\Loader\ArrayFileLoader;
 use UserFrosting\Support\Repository\Repository;
 
 /**
+ * DomainSpecificSprinklesLoader services provider.
+ *
  * Registers services for DomainSpecificSprinklesLoader
+ *
+ * @author ahaenggli (https://github.com/ahaenggli)
  */
 class ServicesProvider
 {
@@ -23,16 +27,13 @@ class ServicesProvider
         $customUfInit = $container->config['customUfInit'];
 
         if($customUfInit !== null && is_array($customUfInit))
-        {
-            // load from existing config
-            $whitelist = $customUfInit['whitelist'];
+        {            
+            // init some vars...             
+            $whitelist = $customUfInit['whitelist']; 
             $sprinkle_dir_prefix = $customUfInit['prefix_sprinkle_dir'];
-
-            // optional additional json file for additional sprinkles
-            $__extraSprinkleJsonFile =  null;
-
-            // get host
-            $host = $_SERVER['HTTP_HOST'];
+            $__extraSprinkleJsonFile =  null; // optional additional json file for additional sprinkles                                    
+            $reInitAllSprinkles = false;      // flag if all Sprinkles should be reinitialized         
+            $host = $_SERVER['HTTP_HOST'];    // get host
 
             // allow only letters, numbers and dots
             $host = preg_replace("/[^A-Za-z0-9\.]/", '', $host);
@@ -40,80 +41,58 @@ class ServicesProvider
             // is host in our whitelist?
             if(in_array($host,$whitelist) || $whitelist === ['*'])
             {   
-                $host = preg_replace("/[^A-Za-z0-9\.]/", '', $host);
+                // replace dots with _
                 $host = str_replace('.', '_', $host);
 
+                // build potential path to additional sprinkles.json
                 $possiblyExistingSprinkleFile = \UserFrosting\SPRINKLES_DIR.\UserFrosting\DS.$sprinkle_dir_prefix.$host.\UserFrosting\DS.'sprinkles.json';
                 
                 // there is an additional sprinkle.json 
-                if(file_exists($possiblyExistingSprinkleFile)) $__extraSprinkleJsonFile = $possiblyExistingSprinkleFile;        
+                if(file_exists($possiblyExistingSprinkleFile)) $__extraSprinkleJsonFile = json_decode(file_get_contents($possiblyExistingSprinkleFile))->base; 
             } 
 
-            // load data from additional sprinkle file
-            if($__extraSprinkleJsonFile !== null){
-                $additionalSprinkles = json_decode(file_get_contents($__extraSprinkleJsonFile))->base;
+            // get all Sprinkle names
+            $sprinkles = $container->sprinkleManager->getSprinkleNames();           
 
-                /* custom .env */
-                foreach($additionalSprinkles as $addSprinkle){
-                    $possiblyExistingEnvFile = \UserFrosting\SPRINKLES_DIR.\UserFrosting\DS.$sprinkle_dir_prefix.$host.\UserFrosting\DS.'config'.\UserFrosting\DS;
-                    if(is_dir($possiblyExistingEnvFile) && file_exists($possiblyExistingEnvFile.'.env')) 
-                    {                            
-                        $dotenv = Dotenv::create($possiblyExistingEnvFile, '.env');
-                        $dotenv->overload();
-                    }
+            // merge extra Sprinkles 
+            if($__extraSprinkleJsonFile !== NULL){
+                $sprinkles = array_unique(array_merge($sprinkles, $__extraSprinkleJsonFile));
+                $reInitAllSprinkles = true; //new Sprinkles could have additionals /config/*.php 
+            } 
+                   
+            /* overload custom .env */
+            foreach($sprinkles as $nr => $k) {
+                $possiblyExistingEnvFile = \UserFrosting\SPRINKLES_DIR.\UserFrosting\DS.$k.\UserFrosting\DS.'config'.\UserFrosting\DS;
+                if(is_dir($possiblyExistingEnvFile) && file_exists($possiblyExistingEnvFile.'.env')) 
+                {                            
+                    $dotenv = Dotenv::create($possiblyExistingEnvFile, '.env');
+                    $dotenv->overload();
+                    $reInitAllSprinkles = true; // maybe other DB_NAME set, different email credentials, and so on
                 }
-
-                /* override existing config */
-                unset($container['config']);        
-                $container['config'] = function ($c) {
-
-                    /* clear locator-cache */
-                    $uri = 'config://';
-                    $key = $uri.'@'.(int) true.(int) true;
-                    $class = new \ReflectionClass("UserFrosting\UniformResourceLocator\ResourceLocator");
-                    $property = $class->getProperty("cache");
-                    $property->setAccessible(true);    
-                    $property->setValue($c->locator, null);
-                    
-                    // Get configuration mode from environment
-                    $mode = getenv('UF_MODE') ?: '';
-
-                    // Construct and load config repository
-                    $builder = new ConfigPathBuilder($c->locator, 'config://');
-                    $loader = new ArrayFileLoader($builder->buildPaths($mode));
-                    $config = new Repository($loader->load());
-
-                    // Construct base url from components, if not explicitly specified
-                    if (!isset($config['site.uri.public'])) {
-                        $uri = $c->request->getUri();
-
-                        // Slim\Http\Uri likes to add trailing slashes when the path is empty, so this fixes that.
-                        $config['site.uri.public'] = trim($uri->getBaseUrl(), '/');
-                    }
-
-                    // Hacky fix to prevent sessions from being hit too much: ignore CSRF middleware for requests for raw assets ;-)
-                    // See https://github.com/laravel/framework/issues/8172#issuecomment-99112012 for more information on why it's bad to hit Laravel sessions multiple times in rapid succession.
-                    $csrfBlacklist = $config['csrf.blacklist'];
-                    $csrfBlacklist['^/' . $config['assets.raw.path']] = [
-                        'GET',
-                    ];
-
-                    $config->set('csrf.blacklist', $csrfBlacklist);
-
-                    return $config;
-                };
-                
-                foreach($additionalSprinkles as $addSprinkle){
-                    // existing instance is overridden
-                    // if(!$container->sprinkleManager->isAvailable($addSprinkle)){
-                        $container->sprinkleManager->init([$addSprinkle]);
-                        $container->sprinkleManager->addSprinkleResources($addSprinkle);
-                        $container->sprinkleManager->registerServices($addSprinkle);                    
-                    // }
-                }
+                // delete this Sprinkle from the array - (or else ->infinite loop)
+                if($k == 'DomainSpecificSprinklesLoader') unset($sprinkles[$nr]);
             }
-        }
-
             
+            // something changed -> reinitialize all sprinkles
+            if($reInitAllSprinkles){
+               
+                // unset, so it can be created again
+                unset($container['config']);   
+                
+                 /* clear locator-cache: else resources such as templates would not be located */
+                 $uri = 'config://';
+                 $key = $uri.'@'.(int) true.(int) true;
+                 $class = new \ReflectionClass("UserFrosting\UniformResourceLocator\ResourceLocator");
+                 $property = $class->getProperty("cache");
+                 $property->setAccessible(true);    
+                 $property->setValue($container->locator, null);
+
+                 // reload all Sprinkles
+                $container->sprinkleManager = new \UserFrosting\System\Sprinkle\SprinkleManager($container);
+                $container->sprinkleManager->init($sprinkles);
+                $container->sprinkleManager->addResources();
+                $container->sprinkleManager->registerAllServices();                
+            }
+        }            
     }
 }
